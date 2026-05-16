@@ -44,22 +44,6 @@ class MetronomePlayer:
         self.duration_amplitude = config.get("duration_amplitude", 0)
         self._beat_data: np.ndarray | None = None
         self._sample_rate: int | None = None
-        self._validate_config()
-
-    # Confugation validation
-
-    def _validate_config(self) -> None:
-        """Raise ValueError for obviously bad config entries."""
-        if not self.segments:
-            raise ValueError("config['segments'] is empty - nothing to play.")
-        for i, seg in enumerate(self.segments):
-            if seg.get("bpm", 0) <= 0:
-                raise ValueError(f"Segment {i}: bpm must be > 0 (got {seg.get('bpm')}).")
-            if seg.get("duration_minutes", 0) <= 0:
-                raise ValueError(
-                    f"Segment {i}: duration_minutes must be > 0 "
-                    f"(got {seg.get('duration_minutes')})."
-                )
 
     # Noise helpers
 

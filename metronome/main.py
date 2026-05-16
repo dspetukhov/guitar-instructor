@@ -19,13 +19,16 @@ DEFAULT_CONFIG = "config.json"
 
 
 def load_config(path: str) -> dict:
-    """Load and return JSON config; exit with message on failure."""
+    """
+    Load and return JSON config; exit on failure.
+    """
     config_path = Path(path)
     if not config_path.exists():
         logging.error("Config file not found: {config_path}")
         sys.exit(1)
     with config_path.open() as file:
-        return json.load(file)
+        config = json.load(file)
+    return config
 
 
 def main() -> None:
@@ -36,9 +39,24 @@ def main() -> None:
     logging.info(f"Beat file         : {config.get('beat_file', '<not set>')}")
     logging.info(f"BPM amplitude     : ±{config.get('bpm_amplitude', 0)}")
     logging.info(f"Duration amplitude: ±{config.get('duration_amplitude', 0)} min")
-    logging.info(f"Segments          : {len(config.get('segments', []))}")
-    for i, seg in enumerate(config.get("segments", []), start=1):
-        logging.info(f"  [{i}] {seg['duration_minutes']} min - {seg['bpm']} BPM")
+    if config.get("segments"):
+        logging.info(f"Segments          : {len(config['segments'])}")
+        for i, seg in enumerate(config.get("segments", []), start=1):
+            if seg.get("bpm", 0) <= 0:
+                logging.warning(
+                    f"Segment {i}: bpm must be > 0 (got {seg.get('bpm')})"
+                )
+                continue
+            if seg.get("duration_minutes", 0) <= 0:
+                logging.warning(
+                    f"Segment {i}: duration_minutes must be > 0 "
+                    f"(got {seg.get('duration_minutes')})"
+                )
+                continue
+
+            logging.info(f"  [{i}] {seg['duration_minutes']} min - {seg['bpm']} BPM")
+    else:
+        raise ValueError("segments aren't specified - nothing to play")
 
     player = MetronomePlayer(config)
     player.run()

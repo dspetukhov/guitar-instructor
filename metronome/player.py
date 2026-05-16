@@ -1,21 +1,21 @@
 """
 metronome_player.py
-~~~~~~~~~~~~~~~~~~~
-MetronomePlayer — drives a beat sound at a series of BPM values for
+-------------------
+MetronomePlayer - drives a beat sound at a series of BPM values for
 configurable durations.  Audio is handled with sounddevice + soundfile.
 
 Beat timing uses time.perf_counter() for sub-millisecond accuracy:
-  • The beat file is loaded once into RAM as a NumPy array.
-  • Each beat is fired with sd.play() in NON-BLOCKING mode.
-  • Any still-playing beat is stopped before the next one fires,
+    - The beat file is loaded once into RAM as a NumPy array.
+    - Each beat is fired with sd.play() in NON-BLOCKING mode.
+    - Any still-playing beat is stopped before the next one fires,
     preventing overlap at segment transitions and high BPMs.
-  • Drift is corrected each beat by anchoring to the segment start time.
+    - Drift is corrected each beat by anchoring to the segment start time.
 
 Noise:
-  • bpm_noise:      each segment's BPM is randomly offset by
-                     uniform(-bpm_noise, +bpm_noise).
-  • duration_noise:  each segment's duration (minutes) is randomly offset
-                     by uniform(-duration_noise, +duration_noise).
+    - bpm_amplitude: each segment's BPM is randomly offset by
+                 uniform(-bpm_amplitude, +bpm_amplitude).
+    - duration_amplitude: each segment's duration (minutes) is randomly offset
+                      by uniform(-duration_amplitude, +duration_amplitude).
 """
 
 import time
@@ -31,27 +31,27 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(message)s",
     datefmt="%H:%M:%S",
 )
-log = logging.getLogger(__name__)
+# log = logging.getLogger(__name__)
 
 
 class MetronomePlayer:
-    """JSON-driven metronome player."""
+    """Configurable metronome player."""
 
     def __init__(self, config: dict) -> None:
-        self.beat_file      = Path(config["beat_file"])
-        self.segments       = config["segments"]        # list of {duration_minutes, bpm}
-        self.bpm_noise      = config.get("bpm_noise", 0)
-        self.duration_noise = config.get("duration_noise", 0)
-        self._beat_data:    np.ndarray | None = None
-        self._sample_rate:  int | None = None
+        self.beat_file = Path(config["beat_file"])
+        self.segments = config["segments"]  # list of {duration_minutes, bpm}
+        self.bpm_amplitude = config.get("bpm_amplitude", 0)
+        self.duration_amplitude = config.get("duration_amplitude", 0)
+        self._beat_data: np.ndarray | None = None
+        self._sample_rate: int | None = None
         self._validate_config()
 
-    # ── Validation ────────────────────────────────────────────────────────────
+    # Confugation validation
 
     def _validate_config(self) -> None:
         """Raise ValueError for obviously bad config entries."""
         if not self.segments:
-            raise ValueError("config['segments'] is empty — nothing to play.")
+            raise ValueError("config['segments'] is empty - nothing to play.")
         for i, seg in enumerate(self.segments):
             if seg.get("bpm", 0) <= 0:
                 raise ValueError(f"Segment {i}: bpm must be > 0 (got {seg.get('bpm')}).")
@@ -61,23 +61,23 @@ class MetronomePlayer:
                     f"(got {seg.get('duration_minutes')})."
                 )
 
-    # ── Noise helpers ─────────────────────────────────────────────────────────
+    # Noise helpers
 
-    def _apply_bpm_noise(self, bpm: float) -> float:
+    def _apply_bpm_amplitude(self, bpm: float) -> float:
         """Return bpm ± random offset, clamped to >= 1."""
-        if self.bpm_noise <= 0:
+        if self.bpm_amplitude <= 0:
             return bpm
-        noisy = bpm + random.uniform(-self.bpm_noise, self.bpm_noise)
+        noisy = bpm + random.uniform(-self.bpm_amplitude, self.bpm_amplitude)
         return max(1.0, noisy)
 
-    def _apply_duration_noise(self, duration_minutes: float) -> float:
+    def _apply_duration_amplitude(self, duration_minutes: float) -> float:
         """Return duration ± random offset (minutes), clamped to >= 0.1."""
-        if self.duration_noise <= 0:
+        if self.duration_amplitude <= 0:
             return duration_minutes
-        noisy = duration_minutes + random.uniform(-self.duration_noise, self.duration_noise)
+        noisy = duration_minutes + random.uniform(-self.duration_amplitude, self.duration_amplitude)
         return max(0.1, noisy)
 
-    # ── Audio helpers ─────────────────────────────────────────────────────────
+    # Audio helpers
 
     def _load_beat(self) -> bool:
         """Load the beat WAV file into self._beat_data.  Returns success flag."""
@@ -85,11 +85,11 @@ class MetronomePlayer:
             data, sr = sf.read(str(self.beat_file), dtype="float32", always_2d=True)
             self._beat_data   = data
             self._sample_rate = sr
-            log.info("Beat file loaded: %s  (%d Hz, %d samples, %d ch)",
+            logging.info("Beat file loaded: %s  (%d Hz, %d samples, %d ch)",
                      self.beat_file, sr, data.shape[0], data.shape[1])
             return True
         except Exception as exc:
-            log.error("Cannot load beat file '%s': %s", self.beat_file, exc)
+            logging.error("Cannot load beat file '%s': %s", self.beat_file, exc)
             return False
 
     @staticmethod
@@ -99,12 +99,12 @@ class MetronomePlayer:
             sd.default.reset()
             return True
         except Exception as exc:
-            log.error("Audio backend error: %s", exc)
+            logging.error("Audio backend error: %s", exc)
             return False
 
     def _play_beat(self) -> None:
         """
-        Fire one beat — NON-BLOCKING.
+        Fire one beat - NON-BLOCKING.
 
         Any previously-playing beat is stopped first so that beats
         never overlap, even when the beat sound is longer than the
@@ -113,7 +113,7 @@ class MetronomePlayer:
         sd.stop()                                       # cut off any prior beat
         sd.play(self._beat_data, self._sample_rate)     # non-blocking
 
-    # ── Core loop ─────────────────────────────────────────────────────────────
+    # Core loop
 
     def run(self) -> None:
         """
@@ -136,20 +136,20 @@ class MetronomePlayer:
             return
 
         total_segments = len(self.segments)
-        log.info("Starting metronome — %d segment(s)", total_segments)
+        logging.info("Starting metronome - %d segment(s)", total_segments)
 
         try:
             for idx, seg in enumerate(self.segments, start=1):
-                # ── Apply noise ───────────────────────────────────────────
+                # Apply noise
                 base_bpm      = seg["bpm"]
                 base_duration = seg["duration_minutes"]
-                eff_bpm       = self._apply_bpm_noise(base_bpm)
-                eff_duration  = self._apply_duration_noise(base_duration)
+                eff_bpm       = self._apply_bpm_amplitude(base_bpm)
+                eff_duration  = self._apply_duration_amplitude(base_duration)
 
                 duration_seconds = eff_duration * 60
                 beat_interval    = 60.0 / eff_bpm      # seconds between beats
 
-                log.info(
+                logging.info(
                     "Segment %d/%d: %.1f BPM (base %d) for %.2f min (base %d)  "
                     "(beat every %.3f s)",
                     idx, total_segments, eff_bpm, base_bpm,
@@ -183,7 +183,7 @@ class MetronomePlayer:
                     self._play_beat()
                     beat_index += 1
 
-                # ── Smooth transition ─────────────────────────────────────
+                # Smooth transition
                 # Wait out the remainder of the last beat interval so the
                 # first beat of the next segment doesn't collide with the
                 # last beat of this one.
@@ -194,15 +194,15 @@ class MetronomePlayer:
                     if remaining > 0:
                         time.sleep(remaining)
 
-                log.info("Segment %d/%d complete.", idx, total_segments)
+                logging.info("Segment %d/%d complete.", idx, total_segments)
 
         except KeyboardInterrupt:
             sd.stop()
-            log.info("Metronome stopped by user.")
+            logging.info("Metronome stopped by user.")
         except Exception as exc:
             sd.stop()
-            log.error("Unexpected error: %s", exc)
+            logging.error("Unexpected error: %s", exc)
             raise
 
         sd.stop()
-        log.info("All segments finished — metronome done.")
+        logging.info("All segments finished - metronome done.")

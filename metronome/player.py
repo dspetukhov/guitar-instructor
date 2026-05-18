@@ -55,7 +55,7 @@ def load_beat(beat_file_path) -> Tuple[ndarray, int] | None:
         )
         logging.info(
             f"Beat audio file loaded: {beat_file_path.resolve()} "
-            f"({data.shape[0]:,} samples; {sample_rate:,} Hz)"
+            f"({sample_rate:,} Hz)"
         )
         return data, sample_rate
     except Exception as exc:
@@ -84,7 +84,7 @@ def play(bpm, duration, audio, sample_rate):
     if not _setup_audio_backend():
         return
 
-    samples = int(60 * sample_rate * duration)
+    samples = int(60 * duration * sample_rate)
     channels = audio.shape[1]
     buffer = zeros((samples, channels), dtype=audio.dtype)
 
@@ -92,7 +92,7 @@ def play(bpm, duration, audio, sample_rate):
     beat_length = min(audio.shape[0], interval_length)  # truncate if beat length > maximum allowed interval length
 
     for pos in range(0, samples, interval_length):
-        if pos + beat_length > samples:
+        if pos + interval_length > samples:
             break
         buffer[pos: pos + beat_length, :] = audio[:beat_length, :]
 

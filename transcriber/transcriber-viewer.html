@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Transcriber viewer</title>
+</head>
+<body>
+
+<h2>Transcriber viewer</h2>
+<!-- <p id="status">Loading...</p> -->
+<p id="info"></p>
+
+<div id="waveform"></div>
+
+<button id="play-button" disabled >Play</button>
+
+<p>Current triad: <strong id="triad-now">—</strong></p>
+
+<script type="module">
+import WaveSurfer from 'https://unpkg.com/wavesurfer.js@7/dist/wavesurfer.esm.js'
+import RegionsPlugin from 'https://unpkg.com/wavesurfer.js@7/dist/plugins/regions.esm.js'
+import TimelinePlugin from 'https://unpkg.com/wavesurfer.js@7/dist/plugins/timeline.esm.js'
+
+const NOTE_HUE = {
+  'C': 200, 'C#': 230, 'D': 260, 'D#': 290,
+  'E': 320, 'F':  350, 'F#':  20, 'G':   50,
+  'G#': 80, 'A':  110, 'A#': 140, 'B':  170
+}
+
+function triadColor(triad, alpha = 0.5) {
+  const [note, quality] = triad.split(':')
+  const hue = NOTE_HUE[note] ?? 0
+  const sat = quality === 'maj' ? 75 : 50
+  const lit = quality === 'maj' ? 58 : 42
+  return `hsla(${hue},${sat}%,${lit}%,${alpha})`
+}
+
+function currentTriad(segments, time) {
+  let lo = 0, hi = segments.length - 1
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1
+    if (segments[mid].start <= time) lo = mid
+    else hi = mid - 1
+  }
+  return segments[lo]?.triad ?? '—'
+}
+
+// fetch JSON, then load audio from the path inside it
+const data = await fetch('test.json').then(r => r.json())
+
+const audioCtx = new AudioContext()
+const decoded = await fetch(data.file_path)
+  .then(r => r.arrayBuffer())
+  .then(b => audioCtx.decodeAudioData(b))
+const sampleRate = decoded.sampleRate
+const duration = decoded.duration
+await audioCtx.close()
+
+// document.getElementById('status').textContent = 'Ready.'
+document.getElementById('info').textContent =
+  `${data.file_path} — ${sampleRate.toLocaleString()} Hz — ${duration.toFixed(2)}s — ${[...new Set(data.triad)].length} unique triads`
+
+// build segments
+const segments = data.frame.map((f, i) => ({
+  start: f / sampleRate,
+  end: i + 1 < data.frame.length ? data.frame[i + 1] / sampleRate : duration,
+  triad: data.triad[i],
+}))
+
+// const regions = RegionsPlugin.create()
+
+const ws = WaveSurfer.create({
+  container: '#waveform',
+  waveColor: '#b6b9c0',
+  progressColor: '#6c80b8',
+  cursorColor: '#23bcee',
+  backgroundColor: '#1a1a1a',
+  height: 360,
+  barWidth: 2,
+  barGap: 0.5,
+  barRadius: 0.5,
+  responsive: true,
+  normalize: true,
+  // backend: 'mediaelement',
+  plugins: [TimelinePlugin.create()],
+})
+
+ws.load(data.file_path)
+
+ws.on('ready', () => {
+  document.getElementById("play-button").onclick = () => ws.playPause()
+  document.getElementById('play-button').disabled = false
+  // for (const seg of segments) {
+  //   regions.addRegion({
+  //     start: seg.start,
+  //     end: seg.end,
+  //     // color: triadColor(seg.triad),
+  //     drag: false,
+  //     resize: false,
+  //   })
+  // }
+})
+
+ws.on('play',  () => document.getElementById('play-button').textContent = 'Pause')
+ws.on('pause', () => document.getElementById('play-button').textContent = 'Play')
+ws.on('finish',() => document.getElementById('play-button').textContent = 'Play')
+
+ws.on('timeupdate', time => {
+  document.getElementById('triad-now').textContent = currentTriad(segments, time)
+})
+</script>
+
+</body>
+</html>

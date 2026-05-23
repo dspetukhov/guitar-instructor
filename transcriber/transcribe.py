@@ -66,27 +66,34 @@ scores = T @ chroma  # (24, frames)
 
 
 def prediction_to_triad(item):
-    root = item // 2
-    qual = "maj" if item % 2 == 0 else "min"
-    return f"{PITCHES[root]}:{qual}"
+    note = item // 2
+    quality = "maj" if item % 2 == 0 else "min"
+    return f"{PITCHES[note]}:{quality}"
 
 
-vfunc = np.vectorize(prediction_to_triad, otypes=[str])
 predictions = np.argmax(scores, axis=0)
-_frames = (np.arange(predictions.size) * hop_length).tolist()
+frames = (np.arange(predictions.size) * hop_length).tolist()
 
-frames, triads = [], []
+segments = []
+_p = None
 
-for s, p in zip(_frames, predictions):
-    if frames and triads and p == triads[-1]:
-        continue
-    frames.append(s)
-    triads.append(p)
+for f, p in zip(frames, predictions):
+    if segments:
+        if _p == p:
+            continue
+        else:
+            _p = p
+            segments[-1][1] = f
+            segments.append([f, None, prediction_to_triad(p)])
+    else:
+        _p = p
+        segments.append([f, None, prediction_to_triad(p)])
+
+segments[-1][1] = f
 
 output = {
     "file_path": audio_file_path.resolve().as_posix(),
-    "frame": frames,
-    "triad": vfunc(triads).tolist()
+    "segments": segments
 }
 
 with open("test.json", "w") as file:

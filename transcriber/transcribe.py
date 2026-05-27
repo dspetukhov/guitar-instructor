@@ -93,6 +93,8 @@ segments[-1][1] = f
 
 output = {
     "file_path": audio_file_path.resolve().as_posix(),
+    "sample_rate": sample_rate,
+    "duration": waveform.shape[0] / sample_rate,
     "segments": segments
 }
 

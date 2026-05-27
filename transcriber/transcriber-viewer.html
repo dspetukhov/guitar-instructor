@@ -64,13 +64,8 @@ let activeSpeed = 1.00
 
 const data = await fetch('test.json').then(r => r.json())
 
-const audioCtx = new AudioContext()
-const decoded = await fetch(data.file_path)
-  .then(r => r.arrayBuffer())
-  .then(b => audioCtx.decodeAudioData(b))
-const sampleRate = decoded.sampleRate
-const duration = decoded.duration
-await audioCtx.close()
+const sampleRate = data.sample_rate
+const duration = data.duration
 
 const triadMap = {}
 for (const seg of data.segments) {

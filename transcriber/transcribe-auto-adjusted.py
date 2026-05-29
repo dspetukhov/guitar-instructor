@@ -19,7 +19,7 @@ if audio_file_path.is_file():
     waveform, sample_rate = librosa.load(
         audio_file_path.as_posix(),
         sr=None,
-        mono=True
+        mono=True  # downmix to mono
     )
     logging.info(f"Waveform: {waveform.shape} | Sample rate: {sample_rate:,}")
 else:
@@ -31,7 +31,12 @@ logging.info(f"Chords: {CHORDS}")
 
 
 def chord_templates():
-    # 12-dim pitch-class templates for maj/min triads
+    """
+    12-dim pitch-class templates for maj/min triads.
+
+    To Do:
+    - add dim/aug or 7ths once it is stable
+    """
     NP = len(PITCHES)
     I = np.arange(NP)
     T = []
@@ -60,6 +65,10 @@ def get_metrics(chroma, T, predictions):
     """
     Lower RMSE and higher cosine similarity mean
     your triads better capture the harmonic content of the audio.
+
+    To Do:
+    - add more evaluation metrics (no ground-truth)
+    - cosine similarity (after L2-normalization)
     """
     reconstructed = np.zeros_like(chroma)
     for idx in range(predictions.shape[0]):
@@ -80,21 +89,25 @@ def get_metrics(chroma, T, predictions):
     return float(rmse), float(np.mean(cosine_similarity)), float(l2_distance)
 
 
-def objective_features(trial, waveform, sample_rate, cache):
+def transform_tuning(trial, waveform, sample_rate, cache):
     """
-    Optuna objective that tunes audio transform parameters via per-feature AUC scoring.
+    Optuna objective that tunes transformation parameters.
 
-    Evaluates each extracted feature column independently and returns the mean AUC
-    across all columns. Duplicate parameter configurations are bypassed with a cache.
-    Per-trial metadata (transform params, max, median) is stored as user attributes
-    so it survives process interruption and can be recovered from the journal.
-
-    Returns:
-        float: Mean AUC across all feature columns for the trial's transform parameters.
+    To Do:
+    - add more parameters for CQT-chroma
+    - HPCP as an alternative to CQT-chroma
+    - beat-synchronous chroma as an alternative to framewise (current)
+    - [Optional] HPSS before Chroma to isolate harmonic content (reduces drum bleed) in live recordings
+    - [Optional] temporal smoothing with median filter or HMM/Viterbi to reduce jitter
     """
+    n_chroma = 12  # default value
     params = {
         "hop_length": trial.suggest_int("hop_length", 64, 32768, step=64),
-        "bins_per_octave": trial.suggest_int("bins_per_octave", 12, 120, step=12)
+        "bins_per_octave": trial.suggest_int(
+            "bins_per_octave",
+            n_chroma,
+            n_chroma * n_chroma,
+            step=n_chroma)
     }
 
     key = hashlib.md5(json.dumps(params, sort_keys=True).encode()).hexdigest()
@@ -127,7 +140,7 @@ if __name__ == "__main__":
 
     cache = {}
     study.optimize(
-        lambda trial: objective_features(
+        lambda trial: transform_tuning(
             trial,
             waveform, sample_rate, cache
         ),

@@ -1,3 +1,34 @@
+"""
+ROADMAP:
+
+To Dos:
+- improve triads detection (harmony lane/extractor)
+- implement note detection (melody lane/extractor) - time-stamped pitches for the dominant line (monophonic where possible)
+    - extract a single dominant melody line from guitar-heavy recordings;
+    - detect onsets, estimate pitch over time, and smooth;
+    - a naive “highest-energy band” melody tracker on the harmonic component is a useful baseline.
+
+How:
+- consider alternative based on Chroma STFT
+    https://medium.com/@oluyaled/detecting-musical-key-from-audio-using-chroma-feature-in-python-72850c0ae4b1
+- implement better features:
+    - harmonic CQT, spectral whitening, and per-frame normalization
+    - key-awareness: boost chords consistent with a running key estimate (major/minor) via a key -> chord prior
+- better temporal modeling
+    - Hidden Markov Model: learn transition probabilities between chord classes and use Viterbi decoding
+    - beat-synchronous features: average chroma/frames within beats to stabilize timing
+- bigger vocabulary
+    - add dim/aug, 7, maj7, min7, sus2/4, power (5) chords by extending templates and priors
+    - back off to simpler labels when confidence is low (e.g., from G7 -> G:maj)
+- preprocessing for live recordings
+  - HPSS is a must; optionally add noise gating and gentle EQ cuts around strong drum fundamentals
+  - consider music source separation to isolate harmonic stems prior to chord estimation (Spleeter or similar OSS)
+- use metrics for no reference case (e.g., weighted chord symbol recall, overlap ratio)
+- augment via pitch-shift/time-stretch to cover all keys and tempos
+- if necessary iterate toward a CRNN-based deep model that ingests CQT or log-mel spectrograms and predicts chord classes per frame (might outperform templates on complex mixes)
+- [optional] export to MusicXML or simple chord charts for use in notation editors
+"""
+
 import sys
 import json
 import logging
@@ -23,11 +54,11 @@ if audio_file_path.is_file():
 else:
     sys.exit(1)
 
-hop_length = 512
+hop_length = 28480
 chroma = librosa.feature.chroma_cqt(
     y=waveform, sr=sample_rate,
     hop_length=hop_length,
-    bins_per_octave=36
+    bins_per_octave=84
 )
 chroma = librosa.util.normalize(chroma, axis=0)
 logging.info(f"Chroma: {chroma.shape}")
@@ -66,17 +97,19 @@ scores = T @ chroma  # (24, frames)
 
 
 def prediction_to_triad(item):
-    note = item // 2
+    root = item // 2
     quality = "maj" if item % 2 == 0 else "min"
-    return f"{PITCHES[note]}:{quality}"
+    return f"{PITCHES[root]}:{quality}"
 
 
+# Smooth labels?
 predictions = np.argmax(scores, axis=0)
 frames = (np.arange(predictions.size) * hop_length).tolist()
 
 segments = []
 _p = None
 
+# Merge segments
 for f, p in zip(frames, predictions):
     if segments:
         if _p == p:
